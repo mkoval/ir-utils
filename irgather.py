@@ -91,13 +91,15 @@ def main():
 
 	ser.open();
 	if not ser.isOpen():
+		ser.close()
 		parser.error('error: unable to open serial port')
 		return
-
+	ser.close()
+	
 	data = {}
 
 	# Read the desired number of samples for each distance.
-	for dist in range(dist_min, dist_max + dist_step, dist_step):
+	for dist in range(params['min'], params['max'], params['step']):
 		# Prompt the user to move the obstruction further from the sensor.
 		# TODO: Enable endline type selection (i.e. with CR's).
 		
@@ -115,7 +117,7 @@ def main():
 
 
 		# Collect the desired number of samples before moving the object.
-		while len(data[dist]) < num_samples:
+		while len(data[dist]) < params['samples']:
 			line = ser.readline()
 
 			print(line)
@@ -126,7 +128,9 @@ def main():
 				reading = res.group(2)
 				data[dist].append(int(reading))
 
-		# Flush the buffer to ensure we're getting up-to-date data.
+		# Flush the buffer so we get up-to-date data (i.e. compensate for the
+		# microcontroller potentially printing data at a rate that is faster
+		# we're reading it.)
 		ser.close()
 
 	for dist, samples in data.iteritems():
