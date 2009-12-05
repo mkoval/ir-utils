@@ -6,90 +6,12 @@ import re
 import serial
 import sys
 
-def calibrate_distance(ser, newline, args):
-	# Log data to a file.
-	if len(args) == 1:
-		output = args[0]
-	else:
-		print('error: no output file specified', file=sys.stderr)
-		return
-	
-	# Ensure the output file is writable.
-	try:
-		f = open(output, 'w')
-	except IOError:
-		print('error: unable to write to \'{0}\'', file=sys.stderr)
-		f.close()
-		return
-	
-	# Starting distance between the IR sensor and the obstruction.
-	dist_min = input('Minimum Distance: ')
-	if dist_min <= 0:
-		print('error: minimum distance must be positive', file=sys.stder)
-		return
-	
-	# Final distance between the IR sensor and the obstruction.
-	dist_max = input('Maximum Distance: ')
-	if dist_max <= dist_min:
-		print('error: maximum distance must exceed minimum distance', file=sys.strerr)
-		return
-	
-	# Increments in which the distance between the IR sensor and the obstruction is moved.
-	dist_step = input('Step Distance: ')
-	if dist_step < 0 or dist_step != int(dist_step) != 0:
-		print('error: number of steps must be a positive integer', file=sys.stderr)
-		return
-	
-	# Number of samples per data point.
-	num_samples = input('Samples per Distance: ')
-	if num_samples < 0 or num_samples != int(num_samples):
-		print('error: number of samples must be a positive integer', file=sys.stderr)
-	
-	data = {}
-	
-	# Read the desired number of samples for each distance.
-	for dist in range(dist_min, dist_max + dist_step, dist_step):
-		# Prompt the user to move the obstruction further from the sensor.
-		print('Place the obstruction {0} units from the sensor and press enter to continue. '
-		      .format(dist), end='')
-		sys.stdin.readline()
-		
-		data[dist] = []
-		
-		# Open the serial connection.
-		ser.open()
-		if not ser.isOpen():
-			print('error: unable to open serial port')	
-			return
-		
-		
-		# Collect the desired number of samples before moving the object.
-		while len(data[dist]) < num_samples:
-			line = ser.readline() # eol=newline
-			
-			print(line)
-			# Parse sensor values from this line of serial output.
-			res = re.match('^pot (\\d+) ir (\\d+)$', line)
-			
-			if res != None:
-				reading = res.group(2)
-				data[dist].append(int(reading))
-		
-		# Flush the buffer to ensure we're getting up-to-date data.
-		ser.close()
-	
-	for dist, samples in data.iteritems():
-		for sample in samples:
-			print('{0} {1}'.format(dist, sample), file=f)
-	
-	print('Data written to {0}'.format(output))
-	f.close()
-
 #
 # Parse command line parameters.
 #
 def main():
-	parser = optparse.OptionParser(usage='usage: %prog [options] device [...]')
+	parser = optparse.OptionParser(usage='usage: %prog [options] outfile min max '
+	 'step samples')
 	parser.add_option('-b', '--baud', dest='baud', default=115200, help='baud rate')
 	parser.add_option('-t', '--timeout', dest='timeout', type='int', default=3,
 	                  help='maximum timeout, in seconds')
@@ -127,25 +49,92 @@ def main():
 	}
 	
 	# Ensure that the TTY device was specified.
-	if len(args) < 1:
-		parser.error('error: incorrect number of arguments')
+	if len(args) < 5:
+		parser.error('incorrect number of arguments')
 		return
 	device = args[0]
-	
+
+	# Ensure the output file is writable.
+	try:
+		f = open(args[0], 'w')
+	except IOError:
+		parser.error('unable to write to \'{0}\'')
+		f.close()
+		return
+
+	# Starting distance between the IR sensor and the obstruction.
+	try:
+		params = {
+			'min'     : float(args[1]),
+			'max'     : float(args[2]),
+			'step'    : float(args[3]),
+			'samples' : int(args[4])
+		}
+		
+		# Ensure this selection of parameters will not cause an infinite loop (i.e. the
+		# sign of the range must be the step size).
+		if (params['max'] - params['min']) * params['step'] < 0:
+			raise ValueError('minimum, maximum, and step-size parameter induce an infinite'
+			                 ' loop')
+		elif params['samples'] <= 0:
+			raise ValueError('number of samples must be positive')
+	except ValueError as err:
+		parser.error(err)
+		return
+
 	# Attempt to open the specified serial port.
 	try:
 		ser = serial.Serial(device, **serialopts)
 	except serial.SerialException as e:
-		print('error: ' + e.__str__(), file=sys.stderr)
+		parser.error('error: ' + e.__str__())
 		return
-	
-	# Ensure that we are able to open the serial port.
+
 	ser.open();
 	if not ser.isOpen():
-		print('error: unable to open serial port')	
+		parser.error('error: unable to open serial port')
 		return
-	
-	calibrate_distance(ser, opts.endline, args[1:])
+
+	data = {}
+
+	# Read the desired number of samples for each distance.
+	for dist in range(dist_min, dist_max + dist_step, dist_step):
+		# Prompt the user to move the obstruction further from the sensor.
+		# TODO: Enable endline type selection (i.e. with CR's).
+		
+		print('Place the obstruction {0} units from the sensor and press enter to continue. '
+		      .format(dist), end='')
+		sys.stdin.readline()
+
+		data[dist] = []
+
+		# Open the serial connection.
+		ser.open()
+		if not ser.isOpen():
+			print('error: unable to open serial port')	
+			return
+
+
+		# Collect the desired number of samples before moving the object.
+		while len(data[dist]) < num_samples:
+			line = ser.readline()
+
+			print(line)
+			# Parse sensor values from this line of serial output.
+			res = re.match('^pot (\\d+) ir (\\d+)$', line)
+
+			if res != None:
+				reading = res.group(2)
+				data[dist].append(int(reading))
+
+		# Flush the buffer to ensure we're getting up-to-date data.
+		ser.close()
+
+	for dist, samples in data.iteritems():
+		for sample in samples:
+			print('{0} {1}'.format(dist, sample), file=f)
+
+	print('Data written to {0}'.format(output))
+	f.close()
 
 if __name__ == '__main__':
 	main()
