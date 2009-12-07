@@ -1,3 +1,6 @@
+#!/usr/bin/python
+# -*- coding: utf-8 -*-
+
 from __future__ import print_function, with_statement
 from numpy import array, median
 from collections import deque
@@ -35,17 +38,21 @@ def main():
 		parser.error('unable to open "{0}" for reading'.format(args[0]))
 		return
 	
+	fields = raw.fieldnames
+	if 'ir_median' not in fields:
+		fields.append('ir_median')
+
 	# Open the output file for writing
 	try:
 		fparsed = open(args[1], 'w')
-		parsed  = csv.DictWriter(fparsed, raw.fieldnames)
+		parsed  = csv.DictWriter(fparsed, fields)
 	except IOError:
 		parser.error('unable to open "{0} for writing'.format(args[1]))
 		return
 	
 	# Make sure the data file has all the columns we reference.
-	if not set(['time', 'distance', 'ir']).issubset(set(raw.fieldnames)):
-		parser.error('data file must have "time", "distance", and "ir" columns')
+	if not set(['time', 'ir']).issubset(set(raw.fieldnames)):
+		parser.error('data file must have "time", and "ir" columns')
 		return
 
 	size  = int(args[2])
@@ -68,7 +75,7 @@ def main():
 		
 		# Replace the current sample's IR reading with the running median.
 		sample_med = sample
-		sample_med['ir'] = median(irbuf)
+		sample_med['ir_median'] = median(irbuf)
 		
 		parsed.writerow(sample_med)
 		
