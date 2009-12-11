@@ -161,7 +161,7 @@ def main():
 		
 		settings['type'] = [ ]
 		
-		for ch in opts.plot:
+		for ch in opts.type:
 			if types.has_key(ch):
 				settings['type'].append(types[ch])
 			else:
@@ -177,7 +177,7 @@ def main():
 		
 		settings['color'] = [ ]
 		
-		for ch in opts.plot:
+		for ch in opts.color:
 			if colors.has_key(ch):
 				settings['color'].append(colors[ch])
 			else:
