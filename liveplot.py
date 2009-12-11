@@ -185,7 +185,7 @@ def main():
 				return
 	
 	# Open a connection to gnuplot via pipes.
-	gnuplot = subprocess.Popen(['gnuplot', '-persist'], stdout=stdout,
+	gnuplot = subprocess.Popen('gnuplot', stdout=stdout,
 	                           stdin=subprocess.PIPE)
 	
 	# Keep a buffer of relevent data points. Only points in the buffer will be
@@ -204,6 +204,8 @@ def main():
 	try:
 		while True:
 			line = stdin.readline()
+			
+			# TODO: Check if any errors have occurred in gnuplot.
 			
 			# Convert the raw line of data into a list of floats using the
 			# str.split function's default behavior: any amount of continuous
@@ -240,7 +242,7 @@ def main():
 			if curTime - lastTime >= thresh and len(buf) > 1:
 				refresh(gnuplot, xcol, ycol, settings, buf)
 				lastTime = curTime
-					
+	
 	# Cleanly handle Ctrl+C termination by the user as it is the most common
 	# method of exiting this script. See the finally clause for cleanup code.
 	except KeyboardInterrupt:
