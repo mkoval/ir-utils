@@ -1,219 +1,252 @@
-#!/Library/Frameworks/Python.framework/Versions/2.6/bin/python
-
-# cat noisy.txt | ./slow 100 | ./liveplot.py -pl -cb -f60 -w1000 -s1 --min 50 --max 150 1 4
+#!/usr/bin/python
 
 from __future__ import print_function
+
+from collections import deque
 from datetime import datetime, timedelta
-import collections
-import optparse
+from optparse import OptionParser
+from sys import stderr, stdin, stdout
+
+import csv
 import os
+import re
 import sys
 import subprocess
 import tempfile
 
-# Plot type options (i.e. line vs point).
-plots = {
+# General plotting style (i.e. how/if to render individual data points and the
+# lines between data points). These options represent only the small set of
+# gnuplot styles that would be of interest in a live plot. The short single-
+# character options can be chained together to style a number of columns in a
+# single parameter (e.g. "plb" would plot y1 as points, y2 as lines, and y2 as
+# both points and lines).
+types = {
 	'p' : 'points',
-	'l' : 'lines'
+	'l' : 'lines',
+	'b' : 'linespoints'
 }
 
+# Small subset of color keywords aliased to single character options. These
+# options can be chained together in the manner described above.
 colors = {
 	'r' : 'red',
 	'g' : 'green',
 	'b' : 'blue',
 	'y' : 'yellow',
 	'c' : 'cyan',
-	'm' : 'magenta'
+	'm' : 'magenta',
+	'k' : 'black'
 }
 
-def get_first(str):
-	return str.split(' ', 1)[0]
-
 # Refresh the graphical representation of the plot.
-def refresh(gnuplot, settings, buf):
+def refresh(gnuplot, xcol, ycol, settings, buf):
 	# Force gnuplot to re-render the graph.
 	cmd = [ ]
-	for i in range(0, len(settings['ycols'])):
-		cmd.append("'-' using {xcol}:{ycol} w {type} lw {weight} lt 6 lc rgb \"{color}\""\
+	for i in range(0, len(ycol)):
+		cmd.append("'-' using 1:2 notitle w {type} lw {weight} lt 6 lc rgb \"{color}\""\
 		      .format(**{
-				'xcol'   : settings['xcol'],
-				'ycol'   : settings['ycols'][i],
-				'color'  : settings['colors'][i],
 				'type'   : settings['type'][i],
+				'color'  : settings['color'][i],
 				'weight' : settings['size']
 		}))
 	
-	print('set xrange [{xmin}:{xmax}]\n'\
-	      'set yrange [{ymin}:{ymax}]'.format(**{
-		'xmin'   : settings['minX'],
-		'xmax'   : settings['maxX'],
-		'ymin'   : settings['minY'],
-		'ymax'   : settings['maxY']
-	}), file=gnuplot.stdin)
+	print('set xrange [{minx}:{maxx}]\n'\
+	      'set xlabel "{labelx}"\n'\
+	      'set ylabel "{labely}"\n'\
+	      'set yrange [{miny}:{maxy}]'.format(**settings), file=gnuplot.stdin)
 	
 	print('plot ' + ', '.join(cmd), file=gnuplot.stdin)
 		
 	# Pipe the buffer of data into gnuplot. This needs to be repeated for each
 	# column of y-data; each terminated by a single 'e' character.
-	for i in range(0, len(settings['ycols'])):
-		print('\n'.join(buf), file=gnuplot.stdin)
+	for col in ycol:
+		format_row = lambda val: '{0} {1}'.format(val[xcol - 1], val[col - 1])
+		print('\n'.join(map(format_row, buf)), file=gnuplot.stdin)
 		print('e', file=gnuplot.stdin)
 	
 	gnuplot.stdin.flush()
 
 def main():
-	parser = optparse.OptionParser(usage='usage: %prog [options] xcol ycol1 [ycol2 [ycol3 ...]]')
+	parser = OptionParser(usage='usage: %prog [options] xcol ycol1 [ycol2 ...]')
 	parser.add_option('-f', '--freq', dest='freq', type="int", default=60,
-	                  help='number of redraws per second (in Hz)')
-	parser.add_option('-p', '--plot', dest='plot', default=None,
-	                  help='list of plot styles, in order of ycol (\'p\' for points, \'l\' for lines)')
+		help='number of redraws per second (in Hz)')
+	parser.add_option('-n', '--nsamples', dest='nsamples', type='int',
+		default=100, help='number of samples to display at once')
+	parser.add_option('--xlabel', dest='labelx', default='x',
+	    help='descriptive label for the x-axis')
+	parser.add_option('--ylabel', dest='labely', default='y',
+	    help='descriptive label for the y-axis')
+	parser.add_option('--min', dest='ymin', type='float', default=-10.0,
+	    help='minimum y-coordinate in the range of y values')
+	parser.add_option('--max', dest='ymax', type='float', default=10.0,
+	    help='maximum y-coordinate in the range of y values')
+	parser.add_option('-p', '--plot', dest='type', default=None,
+		help="list of plot styles, in order of ycol ('p' for points, 'l' for"
+		     "lines, or 'b' for both)")
 	parser.add_option('-c', '--color', dest='color', default=None,
-	                  help='list of colors, in order of ycol (blacK, Red, Green, Blue, Yellow, Cyan, and Magenta)')
-	parser.add_option('-s', '--size', dest='size', default=3, type="int",
-	                  help='thickness (i.e. weight) of lines and size of points')
-	parser.add_option('-w', '--width', dest='width', default=100, type="float")
-	parser.add_option('--min', dest='ymin', default=-10, type="float")
-	parser.add_option('--max', dest='ymax', default=+10, type="float")
+		help='list of colors, in order of ycol (blacK, Red, Green, Blue,'
+		     'Yellow, Cyan, and Magenta)')
+	parser.add_option('-s', '--size', dest='size', default=3, type='int',
+		help='thickness (i.e. weight) of lines and size of points')
 	(opts, args) = parser.parse_args()
 	
 	if len(args) < 2:
 		parser.error('too few arguments')
 		return
 	
-	# Validate the required parameters (i.e. x and y column numbers).
+	# Validate the required x and y column numbers.
 	try:
-		# For simplicity, all y-coordinates are assumed to share the same x-coordinate.
-		xcol  = int(args[0])
-		ycols = []
+		xcol = int(args[0])
+		ycol = [ ]
+		ncol = len(args) - 1
+	
+		for col in args[1:]:
+			ycol.append(int(col))
 		
-		if xcol <= 0:
+		# gnuplot uses one-indexed data columns.
+		if min(xcol, min(ycol)) <= 0:
 			raise ValueError()
-		
-		# With gnuplot's flexibility, it is very easy to support multiple y-coordinates.		
-		for ycol in args[1:]:
-			ycols.append(int(ycol))
-			
-			if ycol <= 0:
-				raise ValueError()
 	except ValueError:
-		parser.error('x and y column numbers must be positive')
+		parser.error('x and y column numbers must be positive integers')
 		return
 	
-	if opts.width != None and opts.width <= 0:
-		parser.error('width must be a positive real number')
-		return
-	elif opts.size <= 0:
-		parser.error('line size must be a positive integer')
-		return
-	elif opts.freq <= 0:
-		parser.error('frequency must be a positive integer')
-		return
-	elif opts.ymax < opts.ymin:
-		parser.error('maximum y value must exceed minimum y value')
+	# Initialize sensible default plot settings that can be overriden using
+	# optional commandline flags.
+	settings = {
+		'labelx' : opts.labelx,
+		'labely' : opts.labely,
+		# The x-range will be almost immediately modified by gnuplot.
+		'minx'  : 0.0,
+		'maxx'  : 1.0,
+		# Very domain-specific. Most likely will be overridden with parameters.
+		'miny'  : opts.ymin,
+		'maxy'  : opts.ymax,
+		# Type of plot (i.e. lines, points, )
+		'type'  : [ 'lines' ] * len(ycol),
+		# Repeat the available colors as required to assign one to each ycol.
+		'color' : (colors.values() * (len(ycol) / len(colors) + 1))[0:len(ycol)],
+		# Set both line thickness and point size.
+		'size'  : opts.size
+	}
 	
-	# Populate the graphical plot options.
-	settings = {}
-	if opts.plot == None:
-		settings['type'] = [ 'lines' for ycol in ycols ]
-	else:
+	# Validate the y-range to which the window is restricted.
+	if opts.ymin == opts.ymax:
+		parser.error('y range must be non-empty')
+		return
+	elif opts.ymin > opts.ymax:
+		print('warning: negative y-range specified; results will be reflected' +
+		      ' across the x-axis', file=stderr)
+	
+	# Validate the frequency (must be a positive integer).
+	if opts.freq <= 0:
+		parser.error('redraw frequency must be a positive integer (in Hz)')
+		return
+	
+	# Validate the number of samples (must be a positive integer).
+	if opts.nsamples <= 0:
+		parser.error('sample buffer size must be a positive integer')
+		return
+	
+	# Validate the point size and line width (must be a positive integer)
+	if opts.size <= 0:
+		parser.error('point size and line width must be a positive integer')
+		return
+	
+	# Parse the list of user-specified plot styles (i.e. line vs points).
+	if opts.type != None:
+		if len(opts.type) != len(ycol):
+			parser.error('expected {0} styles, received {1}'.format(len(ycol),
+			             len(opts.type)))
+			return
+		
 		settings['type'] = [ ]
 		
 		for ch in opts.plot:
-			try:
-				value = plots[ch]
-				settings['type'].append(value)
-			except KeyError:
-				parser.error("unknown plot type '{0}'".format(ch))
+			if types.has_key(ch):
+				settings['type'].append(types[ch])
+			else:
+				parser.error("'{0}' is not a valid plot style".format(ch))
 				return
-		
-		# Enforce a one-to-one mapping between plot types and y columns.
-		if len(settings['type']) != len(ycols):
-			parser.error('expected {0} plot setting(s), received {1}'\
-			             .format(len(ycols), len(settings['type'])))
-			return
 	
-	# ...
-	settings['minY']  = opts.ymin
-	settings['maxY']  = opts.ymax
-	settings['ycols'] = ycols
-	settings['xcol']  = xcol
-	settings['size']  = opts.size
-	
-	settings['colors'] = [ ]
-	if opts.color == None:
-		done = lambda: len(settings['colors']) >= len(ycols)
-		
-		# Cycle through the list of colors.
-		while not done():
-			for color_short, color_long in colors.items():
-				if done():
-					break
-				else:
-					settings['colors'].append(color_long)
-	else:
-		try:
-			# Read the user's color choices.
-			for ch in opts.color:
-				settings['colors'].append(colors[ch])
-		except KeyError:
-			parser.error("unknown color symbol '{0}'".format(ch))
+	# Parse the user-specified list of colors.
+	if opts.color != None:
+		if len(opts.color) != len(ycol):
+			parser.error('expected {0} colors, received {1}'.format(len(ycol),
+			             len(opts.color)))
 			return
 		
-		if len(settings['colors']) != len(ycols):
-			parser.error('expected {0} colors, received {1}'
-			             .format(len(settings['colors']), len(ycols)))
-			return
-	
-	stream = sys.stdin
+		settings['color'] = [ ]
+		
+		for ch in opts.plot:
+			if colors.has_key(ch):
+				settings['color'].append(colors[ch])
+			else:
+				parser.error("'{0}' is not a valid color".format(ch))
+				return
 	
 	# Open a connection to gnuplot via pipes.
-	gnuplot = subprocess.Popen(['gnuplot', '-persist'], stdout=sys.stdout, stdin=subprocess.PIPE)
+	gnuplot = subprocess.Popen(['gnuplot', '-persist'], stdout=stdout,
+	                           stdin=subprocess.PIPE)
 	
-	# Keep a buffer of relevent data points. Only points in the buffer will be plotted.
-	buf  = collections.deque()
-	minX = 0.0
-	maxX = opts.width
+	# Keep a buffer of relevent data points. Only points in the buffer will be
+	# plotted. This makes plotting an O(m) operation, as opposed to a horrid
+	# O(m*n) operation (where m = number of lines and n = number of data points
+	# piped to this script).
+	buf = deque()
 	
 	# Throttle the refresh rate of the graph.
-	lastRedraw = datetime.now()
+	lastTime = datetime.now()
+	thresh   = timedelta(0, 0, 0, 100.0 / opts.freq)
+	
+	# Highest column number required to plot the requested data.
+	maxCol = max(xcol, max(ycol))
 	
 	try:
 		while True:
-			updated = stream.readline().replace('\n', '').replace('\r', '')
+			line = stdin.readline()
 			
-			# HACK
-			updated = updated.replace(',', ' ')
-			
-			if updated == '':
+			# Convert the raw line of data into a list of floats using the
+			# str.split function's default behavior: any amount of continuous
+			# whitespace serves as a delimiter.
+			try:
+				cur = map(float, line.split(None))
+			except ValueError:
+				print('warning: received invalid data "{0}"'.format(line),
+				      file=stderr)
 				continue
-			buf.append(updated)
 			
-			if len(buf) > opts.width:
+			# Make sure we have enough floats to plot the requested data (i.e.
+			# if the user wishes to plot column 4, there must be at least four
+			# columns of data).
+			if len(cur) < maxCol:
+				print('warning: received only {0} of {1} columns of'.format(
+				      len(cur), maxCol), file=stderr)
+				continue
+			
+			# Keep a constant-sized buffer to speed up plotting.
+			buf.append(cur)
+			
+			if len(buf) > opts.nsamples:
 				buf.popleft()
 			
-			# Remove the oldest point to keep the size constant.
-			try:
-				curX   = float(get_first(updated))
-				firstX = float(get_first(buf[0]))
-			except ValueError:
-				print('warning: received invalid data "{0}"'.format(updated), file=sys.stderr)
-				continue
-				
-			settings['minX'] = firstX
-			settings['maxX'] = curX
+			# Manually update the x-range of the window to avoid gnuplot's
+			# rounding algorithm. Note that the data is internally zero-indexed,
+			# but is one-indexed in gnuplot.
+			settings['minx'] = buf[0][xcol - 1]
+			settings['maxx'] = cur[xcol - 1]
 			
 			# Throttle the redraw rate to the specified frequency.
 			curTime = datetime.now()
-			if curTime - lastRedraw >= timedelta(0, 0, 0, 100.0 / opts.freq) and len(buf) > 1:
-				refresh(gnuplot, settings, buf)
-				lastRedraw = curTime
+			if curTime - lastTime >= thresh and len(buf) > 1:
+				refresh(gnuplot, xcol, ycol, settings, buf)
+				lastTime = curTime
 					
-	# Clean up our resources in the finally clause (see below).
+	# Cleanly handle Ctrl+C termination by the user as it is the most common
+	# method of exiting this script. See the finally clause for cleanup code.
 	except KeyboardInterrupt:
 		pass
 	finally:
 		gnuplot.kill()
-		stream.close()
 
 if __name__ == '__main__':
 	main()
