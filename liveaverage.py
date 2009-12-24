@@ -6,6 +6,11 @@ from collections import deque
 from numpy import mean, median
 from sys import argv, exit, stderr, stdin, stdout
 
+averages = {
+	"mean"   : mean,
+	"median" : median
+}
+
 def error(msg):
 	print('{0}: error: {1}'.format(argv[0], msg), file=stderr)
 
@@ -23,8 +28,10 @@ def main():
 	
 	# User must select either median or mean. No other forms of averaging are
 	# currently supported.
-	if argv[1] not in [ 'mean', 'median' ]:
-		error('averaging method must be either "mean" or "median"')
+	if argv[1] in averages.keys():
+		method = averages[argv[1]]
+	else:
+		error('averaging method must be one of ' + averages.keys().__str__())
 		exit(1)
 	
 	# Size of the buffer from which the median is calculated. Larger buffers
@@ -72,7 +79,7 @@ def main():
 		
 			buf.append(data[ycol - 1])
 		
-			print(data[xcol - 1], median(buf))
+			print(data[xcol - 1], method(buf))
 	# Cleanly handle a the user terminating the script with Ctrl+C.
 	except KeyboardInterrupt:
 		pass
