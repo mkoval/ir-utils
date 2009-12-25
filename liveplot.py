@@ -192,7 +192,7 @@ def main():
 	# plotted. This makes plotting an O(m) operation, as opposed to a horrid
 	# O(m*n) operation (where m = number of lines and n = number of data points
 	# piped to this script).
-	buf = deque()
+	buf = deque([ ], opts.nsamples)
 	
 	# Throttle the refresh rate of the graph.
 	lastTime = datetime.now()
@@ -204,6 +204,7 @@ def main():
 	try:
 		while True:
 			line = stdin.readline()
+			line = line.replace('\n', '')
 			
 			# TODO: Check if any errors have occurred in gnuplot.
 			
@@ -221,15 +222,11 @@ def main():
 			# if the user wishes to plot column 4, there must be at least four
 			# columns of data).
 			if len(cur) < maxCol:
-				print('warning: received only {0} of {1} columns of'.format(
+				print('warning: received only {0} of {1} columns'.format(
 				      len(cur), maxCol), file=stderr)
 				continue
 			
-			# Keep a constant-sized buffer to speed up plotting.
 			buf.append(cur)
-			
-			if len(buf) > opts.nsamples:
-				buf.popleft()
 			
 			# Manually update the x-range of the window to avoid gnuplot's
 			# rounding algorithm. Note that the data is internally zero-indexed,

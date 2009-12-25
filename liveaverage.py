@@ -19,8 +19,8 @@ def warning(msg):
 
 def main():
 	# Only command line argument should be the number of samples to median.
-	if len(argv) != 5:
-		print('Usage: {0} [mean | median] buf xcol ycol'.format(argv[0]),
+	if len(argv) != 4:
+		print('Usage: {0} [mean | median] buf ycol'.format(argv[0]),
 		      file=stderr)
 		error('incorrect number of arguments, expected {0} and received {1}'.
 		      format(4, len(argv) - 1))
@@ -28,7 +28,7 @@ def main():
 	
 	# User must select either median or mean. No other forms of averaging are
 	# currently supported.
-	if argv[1] in averages.keys():
+	if averages.haskey(argv[1]):
 		method = averages[argv[1]]
 	else:
 		error('averaging method must be one of ' + averages.keys().__str__())
@@ -48,10 +48,9 @@ def main():
 	# We have no way of checking if the columns will be in stdin until we
 	# receive it. Negative values are obviously invalid.
 	try:
-		xcol = int(argv[3])
-		ycol = int(argv[4])
+		ycol = int(argv[3])
 		
-		if xcol < 1 or ycol < 1:
+		if ycol < 1:
 			raise ValueError()
 	except ValueError:
 		error('x and y data columns must be positive integers')
@@ -64,6 +63,7 @@ def main():
 	try:
 		while True:
 			line = stdin.readline()
+			line = line.replace('\n', '')
 		
 			# Parse the line into a space-delimited list of numbers.
 			try:
@@ -72,14 +72,20 @@ def main():
 				warning('received invalid data "{0}"'.format(line))
 				continue
 		
-			if len(data) < max(xcol, ycol):
+			if len(data) < ycol:
 				warning('expected a minimum of {0} columns, received {1}'
-				        .format(max(xcol, ycol), len(data)))
+				        .format(ycol, len(data)))
 				continue
 		
 			buf.append(data[ycol - 1])
-		
-			print(data[xcol - 1], method(buf))
+			
+			# Preserve the columns that we're not interested in. This allows
+			# for the chaining of multiple averages via pipes.
+			tostring = lambda f: f.__str__()
+			before   = ' '.join(map(tostring, data[0:(ycol - 1)]))
+			after    = ' '.join(map(tostring, data[ycol:]))
+			
+			print(before + ' ' + method(buf).__str__() + ' ' + after + ' ')
 	# Cleanly handle a the user terminating the script with Ctrl+C.
 	except KeyboardInterrupt:
 		pass
