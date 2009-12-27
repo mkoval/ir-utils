@@ -16,4 +16,3 @@ while 1:
 	
 	counter += 1
 	time.sleep(18.6 / 1000)
-

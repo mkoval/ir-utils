@@ -28,7 +28,7 @@ def main():
 	
 	# User must select either median or mean. No other forms of averaging are
 	# currently supported.
-	if averages.haskey(argv[1]):
+	if averages.has_key(argv[1]):
 		method = averages[argv[1]]
 	else:
 		error('averaging method must be one of ' + averages.keys().__str__())
