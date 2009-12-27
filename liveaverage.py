@@ -64,6 +64,10 @@ def main():
 		while True:
 			line = stdin.readline()
 			line = line.replace('\n', '')
+			
+			# Waiting for some data to be written to stdin...
+			if line == '':
+				continue
 		
 			# Parse the line into a space-delimited list of numbers.
 			try:
