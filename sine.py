@@ -13,6 +13,7 @@ while 1:
 	amp = int(100 * math.sin(arg)) + 110
 	
 	print("{0} {1}".format(counter, amp))
+	sys.stdout.flush()
 	
 	counter += 1
 	time.sleep(18.6 / 1000)

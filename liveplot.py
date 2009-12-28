@@ -1,4 +1,5 @@
 #!/usr/bin/python
+# -*- coding: utf-8 -*-
 
 from __future__ import print_function
 
@@ -236,6 +237,7 @@ def main():
 			
 			# Throttle the redraw rate to the specified frequency.
 			curTime = datetime.now()
+			
 			if curTime - lastTime >= thresh and len(buf) > 1:
 				refresh(gnuplot, xcol, ycol, settings, buf)
 				lastTime = curTime

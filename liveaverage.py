@@ -1,10 +1,11 @@
 #!/usr/bin/python
+# -*- coding: utf-8 -*-
 
 from __future__ import print_function
 
 from collections import deque
 from numpy import mean, median
-from sys import argv, exit, stderr, stdin, stdout
+from sys import argv, exit, stderr, stdin, stdout, stderr
 
 averages = {
 	"mean"   : mean,
@@ -85,11 +86,21 @@ def main():
 			
 			# Preserve the columns that we're not interested in. This allows
 			# for the chaining of multiple averages via pipes.
-			tostring = lambda f: f.__str__()
-			before   = ' '.join(map(tostring, data[0:(ycol - 1)]))
-			after    = ' '.join(map(tostring, data[ycol:]))
+			before   = ' '.join(map(str, data[0:(ycol - 1)]))
+			after    = ' '.join(map(str, data[ycol:]))
 			
-			print(before + ' ' + method(buf).__str__() + ' ' + after + ' ')
+			lineout = before + ' ' + method(buf).__str__() + ' ' + after + ' '
+			
+			print(lineout)
+			stdout.flush()
+			
+			# If you want to know what's going on, these lines are very handy.
+			#
+			# instuff  = ' '.join(map(str, data))
+			# outstuff = lineout
+			# print('changed \'{0}\' into \'{1}\''.format(
+			#    instuff, outstuff), file=stderr)
+			
 	# Cleanly handle a the user terminating the script with Ctrl+C.
 	except KeyboardInterrupt:
 		pass
