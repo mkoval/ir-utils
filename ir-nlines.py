@@ -61,7 +61,12 @@ if len(args) != 2:
 	sys.exit(1)
 
 device = args[0]
-nlines = int(args[1])
+nlines = args[1]
+
+if nlines == 'all':
+	nlines = -1
+else :
+	nlines = int(nlines)
 
 # Attempt to open the specified serial port.
 try:
