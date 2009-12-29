@@ -58,7 +58,7 @@ def main():
 	# Sort the readings to make sure their x-coordinates are monotonic
 	# increasing. Non-monotonic increasing x-coordinates will produce garbage
 	# output from interp(x, y).
-	order = lexsort((reads, dists), axis=0)
+	order = lexsort((dists, reads))
 	reads = array(reads)[order]
 	dists = array(dists)[order]
 	
