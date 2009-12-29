@@ -5,9 +5,11 @@ from __future__ import print_function
 import time
 import sys
 
-for line in sys.stdin:
-	print(line, end='')
-	sys.stdout.flush()
+try:
+	for line in sys.stdin:
+		print(line, end='')
+		sys.stdout.flush()
 	
-	time.sleep(18.6 / 1000)
-
+		time.sleep(18.6 / 1000)
+except KeyboardInterrupt:
+	pass
