@@ -57,8 +57,7 @@ def main():
 		error('need at least one data column')
 		exit(1)
 	
-	# Deques with a non-default size will automatically discard old elements
-	# to maintain the constant size.
+	# Second parameter is max length
 	buf = deque([ ], n)
 	
 	try:
@@ -66,9 +65,9 @@ def main():
 			line = stdin.readline()
 			line = line.replace('\n', '')
 			
-			# Waiting for some data to be written to stdin...
+			#if we are waiting, then we are in readline still.	
 			if line == '':
-				continue
+				exit(0)
 		
 			# Parse the line into a space-delimited list of numbers.
 			try:
