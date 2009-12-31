@@ -23,7 +23,7 @@ def main():
 	if len(argv) != 4:
 		print('Usage: {0} [mean | median] buf ycol'.format(argv[0]),
 		      file=stderr)
-		error('incorrect number of arguments, expected {0} and received {1}'.
+		error('incorrect number of args, expected {0} -> got {1}'.
 		      format(4, len(argv) - 1))
 		exit(1)
 	
