@@ -54,7 +54,7 @@ def main():
 		if ycol < 1:
 			raise ValueError()
 	except ValueError:
-		error('x and y data columns must be positive integers')
+		error('need at least one data column')
 		exit(1)
 	
 	# Deques with a non-default size will automatically discard old elements
