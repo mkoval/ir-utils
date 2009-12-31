@@ -24,7 +24,7 @@ def main():
 		print('Usage: {0} [mean | median] buf ycol'.format(argv[0]),
 		      file=stderr)
 		error('incorrect number of args, expected {0} -> got {1}'.
-		      format(4, len(argv) - 1))
+		      format(3, len(argv) - 1))
 		exit(1)
 	
 	# User must select either median or mean. No other forms of averaging are
